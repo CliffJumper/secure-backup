@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package backupplugin;
+
+option go_package = "github.com/freew/secure-backup/pkg/plugins/proto";
+
+service Provider {
+  rpc Init(InitRequest) returns (Empty);
+  rpc UploadFile(UploadRequest) returns (Empty);
+  rpc DownloadFile(DownloadRequest) returns (Empty);
+  rpc ListFiles(ListRequest) returns (ListResponse);
+  rpc DeleteFile(DeleteRequest) returns (Empty);
+}
+
+message Empty {}
+
+message InitRequest {
+  map<string, string> config = 1;
+}
+
+message UploadRequest {
+  string local_path = 1;
+  string remote_path = 2;
+}
+
+message DownloadRequest {
+  string remote_path = 1;
+  string local_path = 2;
+}
+
+message ListRequest {
+  string prefix = 1;
+}
+
+message ListResponse {
+  repeated string files = 1;
+}
+
+message DeleteRequest {
+  string remote_path = 1;
+}
