@@ -377,15 +377,73 @@ func runBackup(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to retrieve manifest. Make sure credentials match plugin requirements: %v", err)
 	}
 
+	// Walk all targets to discover current files on disk.
+	currentFiles := make(map[string]os.FileInfo)
+	for _, target := range targets {
+		err := filepath.Walk(target, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			name := filepath.ToSlash(path)
+			currentFiles[name] = info
+			return nil
+		})
+		if err != nil {
+			log.Printf("Error walking target %s: %v", target, err)
+		}
+	}
+
+	// Determine which files need to be archived (new or modified).
+	var changedPaths []string
+	for name, info := range currentFiles {
+		existing, inManifest := m.Files[name]
+		if !inManifest || existing.Size != info.Size() || existing.ModTime != info.ModTime().Unix() {
+			changedPaths = append(changedPaths, name)
+		}
+	}
+
+	// Remove files from manifest that no longer exist on disk under target prefixes.
+	for path := range m.Files {
+		for _, target := range targets {
+			prefix := filepath.ToSlash(target)
+			if strings.HasPrefix(path, prefix) {
+				if _, exists := currentFiles[path]; !exists {
+					delete(m.Files, path)
+				}
+				break
+			}
+		}
+	}
+
+	if len(changedPaths) == 0 {
+		fmt.Println("No new or modified files found. Cleaning up orphaned chunks...")
+		deleteOrphanedChunks(provider, m)
+		if err := manifest.EncryptAndUpload(provider, password, m); err != nil {
+			log.Fatalf("Failed to upload updated manifest: %v", err)
+		}
+		encrypt.ZeroBytes(password)
+		fmt.Println("Backup complete (no changes).")
+		return
+	}
+
+	fmt.Printf("Found %d new/modified file(s) to back up.\n", len(changedPaths))
+
 	arc, err := archive.NewArchiver()
 	if err != nil {
 		log.Fatalf("Failed to initialize archiver: %v", err)
 	}
 
-	for _, target := range targets {
-		fmt.Printf("Processing %s...\n", target)
-		if err := arc.Add(target); err != nil {
-			log.Printf("Error processing target %s: %v", target, err)
+	// Add only changed files to the archiver. We walk through the changed paths
+	// and add each one individually. For directories that contain changed files,
+	// the archiver's Add walks recursively, so we pass only top-level changed targets.
+	// However, since changedPaths are individual files, we add them directly.
+	for _, path := range changedPaths {
+		info := currentFiles[path]
+		if info.IsDir() {
+			continue // directories are added implicitly when their children are added
+		}
+		if err := arc.AddFile(filepath.FromSlash(path), info); err != nil {
+			log.Printf("Error processing %s: %v", path, err)
 		}
 	}
 
@@ -427,9 +485,13 @@ func runBackup(cmd *cobra.Command, args []string) {
 		m.Chunks = append(m.Chunks, chunkID)
 	}
 
+	// Merge newly archived files into manifest.
 	for path, meta := range arc.Files {
 		m.Files[path] = meta
 	}
+
+	// Clean up chunks that are no longer referenced by any file.
+	deleteOrphanedChunks(provider, m)
 
 	fmt.Println("Updating manifest...")
 	if err := manifest.EncryptAndUpload(provider, password, m); err != nil {
@@ -633,33 +695,7 @@ func runDelete(cmd *cobra.Command, args []string) {
 		delete(m.Files, f)
 	}
 
-	// Determine active chunks
-	activeChunks := make(map[string]bool)
-	for _, meta := range m.Files {
-		activeChunks[meta.ChunkID] = true
-	}
-
-	// Remove orphaned chunks
-	var newChunks []string
-	var errCount int
-	for _, chunkID := range m.Chunks {
-		if !activeChunks[chunkID] && (deleteAll || len(targets) > 0) {
-			remoteName := fmt.Sprintf("data-%s.enc", chunkID)
-			remotePath := filepath.Join(remotePrefix, remoteName)
-			remotePath = filepath.ToSlash(remotePath)
-
-			if err := provider.DeleteFile(remotePath); err != nil {
-				log.Printf("Failed to physically delete chunk %s: %v", chunkID, err)
-				errCount++
-				newChunks = append(newChunks, chunkID) // keep it if deletion failed
-			} else {
-				fmt.Printf("Deleted orphaned chunk %s\n", chunkID)
-			}
-		} else {
-			newChunks = append(newChunks, chunkID)
-		}
-	}
-	m.Chunks = newChunks
+	errCount := deleteOrphanedChunks(provider, m)
 
 	if deleteAll {
 		fmt.Println("Deleting manifest...")
@@ -677,6 +713,37 @@ func runDelete(cmd *cobra.Command, args []string) {
 		}
 	}
 	encrypt.ZeroBytes(password)
+}
+
+// deleteOrphanedChunks removes chunks from storage that are no longer referenced
+// by any file in the manifest. Returns the number of chunks that failed to delete.
+func deleteOrphanedChunks(provider plugins.Provider, m *manifest.Manifest) int {
+	activeChunks := make(map[string]bool)
+	for _, meta := range m.Files {
+		activeChunks[meta.ChunkID] = true
+	}
+
+	var newChunks []string
+	var errCount int
+	for _, chunkID := range m.Chunks {
+		if !activeChunks[chunkID] {
+			remoteName := fmt.Sprintf("data-%s.enc", chunkID)
+			remotePath := filepath.Join(remotePrefix, remoteName)
+			remotePath = filepath.ToSlash(remotePath)
+
+			if err := provider.DeleteFile(remotePath); err != nil {
+				log.Printf("Failed to physically delete chunk %s: %v", chunkID, err)
+				errCount++
+				newChunks = append(newChunks, chunkID)
+			} else {
+				fmt.Printf("Deleted orphaned chunk %s\n", chunkID)
+			}
+		} else {
+			newChunks = append(newChunks, chunkID)
+		}
+	}
+	m.Chunks = newChunks
+	return errCount
 }
 
 func runList(cmd *cobra.Command, args []string) {

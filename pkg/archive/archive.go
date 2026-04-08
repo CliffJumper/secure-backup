@@ -249,6 +249,73 @@ func (a *Archiver) Add(target string) error {
 	})
 }
 
+// AddFile adds a single file (by path and its FileInfo) to the archive.
+// Unlike Add, it does not walk directories recursively.
+func (a *Archiver) AddFile(path string, info os.FileInfo) error {
+	name := filepath.ToSlash(path)
+
+	header, err := tar.FileInfoHeader(info, info.Name())
+	if err != nil {
+		return err
+	}
+	header.Name = name
+
+	if info.Mode().IsRegular() {
+		if a.tw == nil || a.currentSize >= a.chunkLimit {
+			if err := a.rollChunk(); err != nil {
+				return err
+			}
+		}
+
+		if err := a.tw.WriteHeader(header); err != nil {
+			return err
+		}
+
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		written, err := io.Copy(a.tw, f)
+		if err != nil {
+			return err
+		}
+		a.currentSize += written
+
+		a.Files[name] = manifest.FileMeta{
+			Size:    info.Size(),
+			ModTime: info.ModTime().Unix(),
+			Mode:    uint32(info.Mode()),
+			ChunkID: a.currentUUID,
+		}
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		if a.tw == nil {
+			if err := a.rollChunk(); err != nil {
+				return err
+			}
+		}
+
+		link, err := os.Readlink(path)
+		if err == nil {
+			header.Linkname = link
+		}
+
+		if err := a.tw.WriteHeader(header); err != nil {
+			return err
+		}
+
+		a.Files[name] = manifest.FileMeta{
+			Size:    0,
+			ModTime: info.ModTime().Unix(),
+			Mode:    uint32(info.Mode()),
+			ChunkID: a.currentUUID,
+		}
+	}
+
+	return nil
+}
+
 // Finalize gracefully closes the last chunk. Returns chunk temp dir path.
 func (a *Archiver) Finalize() (string, error) {
 	if a.tw != nil {
