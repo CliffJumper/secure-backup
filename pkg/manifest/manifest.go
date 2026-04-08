@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/freew/secure-backup/pkg/encrypt"
 	"github.com/freew/secure-backup/pkg/plugins"
@@ -49,6 +50,13 @@ func DownloadAndDecrypt(provider plugins.Provider, password []byte) (*Manifest, 
 		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
 			return NewManifest(), nil
 		}
+		
+		// Fallback for wrapped errors or string matching for missing files
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "nosuchfile") || strings.Contains(lower, "no such file") || strings.Contains(lower, "404") || strings.Contains(lower, "not exist") {
+			return NewManifest(), nil
+		}
+		
 		return nil, fmt.Errorf("failed to download manifest: %w", err)
 	}
 

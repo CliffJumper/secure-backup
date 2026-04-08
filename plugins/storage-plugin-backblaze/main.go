@@ -92,6 +92,9 @@ func (b *BackblazeProvider) DownloadFile(remotePath, localPath string) error {
 		if err == nil {
 			return nil
 		}
+		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+			return err
+		}
 		lastErr = err
 		log.Printf("Download failed, retrying (%d/3)... err: %v", i+1, err)
 		time.Sleep(2 * time.Second)
@@ -114,7 +117,7 @@ func (b *BackblazeProvider) doDownload(ctx context.Context, remotePath, localPat
 		// Blazer's reader construction doesn't return an error, so map common "missing" conditions here.
 		// If it looks missing, return a gRPC NotFound so the host can distinguish it from network errors.
 		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "not found") || strings.Contains(lower, "nosuchfile") || strings.Contains(lower, "no such file") {
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "nosuchfile") || strings.Contains(lower, "no such file") || strings.Contains(lower, "404") || strings.Contains(lower, "not exist") {
 			return status.Error(codes.NotFound, "object not found")
 		}
 		return fmt.Errorf("failed to download data: %w", err)
