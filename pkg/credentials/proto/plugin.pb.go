@@ -123,7 +123,7 @@ const file_pkg_credentials_proto_plugin_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012c\n" +
 	"\x12CredentialProvider\x12M\n" +
-	"\x0eGetCredentials\x12\x1c.credentialplugin.GetRequest\x1a\x1d.credentialplugin.GetResponseB6Z4github.com/freew/secure-backup/pkg/credentials/protob\x06proto3"
+	"\x0eGetCredentials\x12\x1c.credentialplugin.GetRequest\x1a\x1d.credentialplugin.GetResponseB<Z:github.com/CliffJumper/secure-backup/pkg/credentials/protob\x06proto3"
 
 var (
 	file_pkg_credentials_proto_plugin_proto_rawDescOnce sync.Once

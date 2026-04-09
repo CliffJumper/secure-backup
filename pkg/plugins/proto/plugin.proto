@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package backupplugin;
 
-option go_package = "github.com/freew/secure-backup/pkg/plugins/proto";
+option go_package = "github.com/CliffJumper/secure-backup/pkg/plugins/proto";
 
 service Provider {
   rpc Init(InitRequest) returns (Empty);

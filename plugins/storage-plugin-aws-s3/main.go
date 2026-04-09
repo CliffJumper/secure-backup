@@ -9,12 +9,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/CliffJumper/secure-backup/pkg/plugins"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
-	"github.com/freew/secure-backup/pkg/plugins"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -39,7 +39,7 @@ func (s *S3Provider) Init(cfg map[string]string) error {
 	if region != "" {
 		opts = append(opts, config.WithRegion(region))
 	}
-	
+
 	// Securely pass mapped keys avoiding direct ENV checks if we were provided them via credential plugins
 	if accessKey != "" && secretKey != "" {
 		opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")))

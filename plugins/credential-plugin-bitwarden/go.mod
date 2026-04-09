@@ -1,11 +1,11 @@
-module github.com/freew/secure-backup/plugins/credential-plugin-bitwarden
+module github.com/CliffJumper/secure-backup/plugins/credential-plugin-bitwarden
 
 go 1.26.1
 
-replace github.com/freew/secure-backup => ../../
+replace github.com/CliffJumper/secure-backup => ../../
 
 require (
-	github.com/freew/secure-backup v0.0.0-00010101000000-000000000000
+	github.com/CliffJumper/secure-backup v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/go-plugin v1.7.0
 )
 

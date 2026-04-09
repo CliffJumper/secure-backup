@@ -13,11 +13,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/freew/secure-backup/pkg/archive"
-	"github.com/freew/secure-backup/pkg/credentials"
-	"github.com/freew/secure-backup/pkg/encrypt"
-	"github.com/freew/secure-backup/pkg/manifest"
-	"github.com/freew/secure-backup/pkg/plugins"
+	"github.com/CliffJumper/secure-backup/pkg/archive"
+	"github.com/CliffJumper/secure-backup/pkg/credentials"
+	"github.com/CliffJumper/secure-backup/pkg/encrypt"
+	"github.com/CliffJumper/secure-backup/pkg/manifest"
+	"github.com/CliffJumper/secure-backup/pkg/plugins"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/spf13/cobra"
@@ -26,19 +26,19 @@ import (
 )
 
 var (
-	password          []byte
-	passwordFlag      string
-	fileListFile      string
-	remotePrefix      string
-	restoreAll        bool
-	deleteAll         bool
-	force             bool
-	verbose           bool
-	stripPrefix       string
-	destDir           string
-	credPlugin        string
-	credItem          string
-	pluginOpts        map[string]string
+	password     []byte
+	passwordFlag string
+	fileListFile string
+	remotePrefix string
+	restoreAll   bool
+	deleteAll    bool
+	force        bool
+	verbose      bool
+	stripPrefix  string
+	destDir      string
+	credPlugin   string
+	credItem     string
+	pluginOpts   map[string]string
 
 	// New flags for plugins
 	pluginFlag string

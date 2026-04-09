@@ -1,4 +1,4 @@
-module github.com/freew/secure-backup
+module github.com/CliffJumper/secure-backup
 
 go 1.25.0
 

@@ -15,14 +15,14 @@ This means you can write and distribute third-party plugins in **any** language 
 You will be writing an independent deployable Go binary using a `main` execution package.
 
 ### Storage Plugin Example
-If you are writing a custom backend storage target, you must fully implement the `Provider` interface found in `github.com/freew/secure-backup/pkg/plugins`.
+If you are writing a custom backend storage target, you must fully implement the `Provider` interface found in `github.com/CliffJumper/secure-backup/pkg/plugins`.
 
 ```go
 package main
 
 import (
 	"github.com/hashicorp/go-plugin"
-	"github.com/freew/secure-backup/pkg/plugins"
+	"github.com/CliffJumper/secure-backup/pkg/plugins"
 )
 
 type MyCustomStorage struct{}
@@ -56,14 +56,14 @@ func main() {
 ```
 
 ### Credential Plugin Example
-If you are writing a custom credential resolver, construct it utilizing the `Provider` from `github.com/freew/secure-backup/pkg/credentials`.
+If you are writing a custom credential resolver, construct it utilizing the `Provider` from `github.com/CliffJumper/secure-backup/pkg/credentials`.
 
 ```go
 package main
 
 import (
 	"github.com/hashicorp/go-plugin"
-	"github.com/freew/secure-backup/pkg/credentials"
+	"github.com/CliffJumper/secure-backup/pkg/credentials"
 )
 
 type MyVault struct{}

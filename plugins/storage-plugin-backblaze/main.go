@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Backblaze/blazer/b2"
-	"github.com/freew/secure-backup/pkg/plugins"
+	"github.com/CliffJumper/secure-backup/pkg/plugins"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

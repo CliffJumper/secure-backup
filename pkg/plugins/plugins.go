@@ -3,7 +3,7 @@ package plugins
 import (
 	"context"
 
-	"github.com/freew/secure-backup/pkg/plugins/proto"
+	"github.com/CliffJumper/secure-backup/pkg/plugins/proto"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
 )

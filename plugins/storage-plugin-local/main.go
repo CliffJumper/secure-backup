@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/freew/secure-backup/pkg/plugins"
+	"github.com/CliffJumper/secure-backup/pkg/plugins"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -113,7 +113,7 @@ func (l *LocalProvider) DownloadFile(remotePath, localPath string) error {
 
 func (l *LocalProvider) ListFiles(prefix string) ([]string, error) {
 	var files []string
-	
+
 	err := filepath.Walk(l.baseDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -121,25 +121,25 @@ func (l *LocalProvider) ListFiles(prefix string) ([]string, error) {
 		if info.IsDir() {
 			return nil
 		}
-		
+
 		relPath, err := filepath.Rel(l.baseDir, path)
 		if err != nil {
 			return err
 		}
-		
+
 		// To match B2 semantics, paths might need to be forward slash separated
 		relPath = filepath.ToSlash(relPath)
-		
+
 		if strings.HasPrefix(relPath, prefix) {
 			files = append(files, relPath)
 		}
 		return nil
 	})
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to walk local directory: %w", err)
 	}
-	
+
 	return files, nil
 }
 
@@ -148,7 +148,7 @@ func (l *LocalProvider) DeleteFile(remotePath string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	if err := os.Remove(targetPath); err != nil {
 		if os.IsNotExist(err) {
 			return nil // Idempotent delete

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/freew/secure-backup/pkg/encrypt"
-	"github.com/freew/secure-backup/pkg/plugins"
+	"github.com/CliffJumper/secure-backup/pkg/encrypt"
+	"github.com/CliffJumper/secure-backup/pkg/plugins"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -50,13 +50,13 @@ func DownloadAndDecrypt(provider plugins.Provider, password []byte) (*Manifest, 
 		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
 			return NewManifest(), nil
 		}
-		
+
 		// Fallback for wrapped errors or string matching for missing files
 		lower := strings.ToLower(err.Error())
 		if strings.Contains(lower, "not found") || strings.Contains(lower, "nosuchfile") || strings.Contains(lower, "no such file") || strings.Contains(lower, "404") || strings.Contains(lower, "not exist") {
 			return NewManifest(), nil
 		}
-		
+
 		return nil, fmt.Errorf("failed to download manifest: %w", err)
 	}
 
@@ -101,7 +101,7 @@ func EncryptAndUpload(provider plugins.Provider, password []byte, m *Manifest) e
 		return fmt.Errorf("failed to create temp output file: %w", err)
 	}
 	tempPath := tempFile.Name()
-	
+
 	if err := os.WriteFile(tempPath, ciphertext, 0600); err != nil {
 		tempFile.Close()
 		return fmt.Errorf("failed to write encrypted manifest to temp: %w", err)

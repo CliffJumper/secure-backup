@@ -372,7 +372,7 @@ const file_pkg_plugins_proto_plugin_proto_rawDesc = "" +
 	"\fDownloadFile\x12\x1d.backupplugin.DownloadRequest\x1a\x13.backupplugin.Empty\x12B\n" +
 	"\tListFiles\x12\x19.backupplugin.ListRequest\x1a\x1a.backupplugin.ListResponse\x12>\n" +
 	"\n" +
-	"DeleteFile\x12\x1b.backupplugin.DeleteRequest\x1a\x13.backupplugin.EmptyB2Z0github.com/freew/secure-backup/pkg/plugins/protob\x06proto3"
+	"DeleteFile\x12\x1b.backupplugin.DeleteRequest\x1a\x13.backupplugin.EmptyB8Z6github.com/CliffJumper/secure-backup/pkg/plugins/protob\x06proto3"
 
 var (
 	file_pkg_plugins_proto_plugin_proto_rawDescOnce sync.Once

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/freew/secure-backup/pkg/plugins/proto"
+	"github.com/CliffJumper/secure-backup/pkg/plugins/proto"
 )
 
 func envDurationSeconds(key string, def time.Duration) time.Duration {
@@ -22,10 +22,10 @@ func envDurationSeconds(key string, def time.Duration) time.Duration {
 }
 
 var (
-	initTimeout    = envDurationSeconds("SECURE_BACKUP_PLUGIN_INIT_TIMEOUT_SECONDS", 30*time.Second)
-	listTimeout    = envDurationSeconds("SECURE_BACKUP_PLUGIN_LIST_TIMEOUT_SECONDS", 30*time.Second)
-	deleteTimeout  = envDurationSeconds("SECURE_BACKUP_PLUGIN_DELETE_TIMEOUT_SECONDS", 2*time.Minute)
-	uploadTimeout  = envDurationSeconds("SECURE_BACKUP_PLUGIN_UPLOAD_TIMEOUT_SECONDS", 30*time.Minute)
+	initTimeout     = envDurationSeconds("SECURE_BACKUP_PLUGIN_INIT_TIMEOUT_SECONDS", 30*time.Second)
+	listTimeout     = envDurationSeconds("SECURE_BACKUP_PLUGIN_LIST_TIMEOUT_SECONDS", 30*time.Second)
+	deleteTimeout   = envDurationSeconds("SECURE_BACKUP_PLUGIN_DELETE_TIMEOUT_SECONDS", 2*time.Minute)
+	uploadTimeout   = envDurationSeconds("SECURE_BACKUP_PLUGIN_UPLOAD_TIMEOUT_SECONDS", 30*time.Minute)
 	downloadTimeout = envDurationSeconds("SECURE_BACKUP_PLUGIN_DOWNLOAD_TIMEOUT_SECONDS", 30*time.Minute)
 )
 

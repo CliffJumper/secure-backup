@@ -1,8 +1,12 @@
-.PHONY: all build install install-core install-plugins uninstall uninstall-core uninstall-plugins clean gen-security-keys sign-plugins
+.PHONY: all build proto install install-core install-plugins uninstall uninstall-core uninstall-plugins clean gen-security-keys sign-plugins
 
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 PLUGINDIR ?= $(PREFIX)/lib/secure-backup/plugins
+
+# Protobuf codegen tooling (pinned for reproducibility)
+PROTOC_GEN_GO_VERSION ?= v1.36.11
+PROTOC_GEN_GO_GRPC_VERSION ?= v1.5.1
 
 PKG_GO_FILES := $(shell find ./pkg -type f -name '*.go')
 CORE_GO_FILES := $(PKG_GO_FILES) main.go
@@ -16,9 +20,20 @@ all: build
 build: $(CORE_BIN) $(PLUGIN_BINS) sign-plugins
 	@echo "Build complete! Binaries are located in build/"
 
+proto:
+	@echo " -> Generating protobuf Go code..."
+	@command -v protoc >/dev/null 2>&1 || (echo "Error: protoc is required but not found in PATH." && exit 1)
+	@go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+	@PATH="$$PATH:$$(go env GOPATH)/bin" protoc -I . \
+		--go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		pkg/credentials/proto/plugin.proto pkg/plugins/proto/plugin.proto
+
 $(CORE_BIN): $(CORE_GO_FILES) go.mod go.sum
 	@echo " -> Compiling core binary..."
 	@mkdir -p build/bin
+	@$(MAKE) proto
 	@go mod tidy
 	@go build -o $(CORE_BIN) .
 
@@ -67,6 +82,8 @@ uninstall: uninstall-core uninstall-plugins
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf build/
+	@rm -f pkg/credentials/proto/plugin.pb.go pkg/credentials/proto/plugin_grpc.pb.go
+	@rm -f pkg/plugins/proto/plugin.pb.go pkg/plugins/proto/plugin_grpc.pb.go
 	@echo "Clean complete."
 
 gen-security-keys:

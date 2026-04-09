@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CliffJumper/secure-backup/pkg/manifest"
 	"github.com/dsnet/compress/bzip2"
-	"github.com/freew/secure-backup/pkg/manifest"
 	"github.com/google/uuid"
 )
 
@@ -363,7 +363,7 @@ func Extract(chunkData []byte, filesToExtract map[string]bool, destDir string, s
 
 		name := header.Name
 		if stripPrefix != "" {
-			// Normalize both the file path and the strip prefix to be purely relative 
+			// Normalize both the file path and the strip prefix to be purely relative
 			// and identically cleaned so we never fail due to leading/trailing slash mismatches.
 			sn := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(name)), "/")
 			ss := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(stripPrefix)), "/")

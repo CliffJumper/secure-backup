@@ -3,7 +3,7 @@ package credentials
 import (
 	"context"
 
-	"github.com/freew/secure-backup/pkg/credentials/proto"
+	"github.com/CliffJumper/secure-backup/pkg/credentials/proto"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
 )

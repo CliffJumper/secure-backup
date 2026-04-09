@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/freew/secure-backup/pkg/credentials"
+	"github.com/CliffJumper/secure-backup/pkg/credentials"
 	"github.com/hashicorp/go-plugin"
 )
 

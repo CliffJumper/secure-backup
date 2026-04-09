@@ -1,12 +1,12 @@
-module github.com/freew/secure-backup/plugins/storage-plugin-backblaze
+module github.com/CliffJumper/secure-backup/plugins/storage-plugin-backblaze
 
 go 1.26.1
 
-replace github.com/freew/secure-backup => ../../
+replace github.com/CliffJumper/secure-backup => ../../
 
 require (
 	github.com/Backblaze/blazer v0.7.2
-	github.com/freew/secure-backup v0.0.0-00010101000000-000000000000
+	github.com/CliffJumper/secure-backup v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/go-plugin v1.7.0
 	google.golang.org/grpc v1.79.3
 )

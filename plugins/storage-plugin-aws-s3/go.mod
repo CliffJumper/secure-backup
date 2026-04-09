@@ -1,16 +1,16 @@
-module github.com/freew/secure-backup/plugins/storage-plugin-aws-s3
+module github.com/CliffJumper/secure-backup/plugins/storage-plugin-aws-s3
 
 go 1.26.1
 
-replace github.com/freew/secure-backup => ../../
+replace github.com/CliffJumper/secure-backup => ../../
 
 require (
+	github.com/CliffJumper/secure-backup v0.0.0-00010101000000-000000000000
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.14
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.98.0
 	github.com/aws/smithy-go v1.24.2
-	github.com/freew/secure-backup v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/go-plugin v1.7.0
 	google.golang.org/grpc v1.79.3
 )

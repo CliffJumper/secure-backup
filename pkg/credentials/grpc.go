@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/freew/secure-backup/pkg/credentials/proto"
+	"github.com/CliffJumper/secure-backup/pkg/credentials/proto"
 )
 
 func envDurationSeconds(key string, def time.Duration) time.Duration {
