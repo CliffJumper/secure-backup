@@ -2,16 +2,22 @@ package main
 
 import (
 	"bufio"
+	"crypto"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/CliffJumper/secure-backup/pkg/archive"
 	"github.com/CliffJumper/secure-backup/pkg/credentials"
@@ -21,6 +27,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 	"google.golang.org/grpc/status"
 )
@@ -43,9 +51,6 @@ var (
 	// New flags for plugins
 	pluginFlag string
 	pluginDir  string
-
-	// Embedded public key for plugin verification
-	trustedPublicKeyB64 = "5XNxNN0zGdS4KOZvhrHcSv6LuUfvjMnqXbSr+CrIYTU="
 )
 
 func main() {
@@ -134,6 +139,8 @@ func ensureAuth() {
 func findPlugin(prefix, name string) (string, error) {
 	binaryName := prefix + "-" + name
 
+	trustedKeys := loadTrustedKeys()
+
 	var searchPaths []string
 
 	// 0. Explicit override for development/testing.
@@ -154,6 +161,10 @@ func findPlugin(prefix, name string) (string, error) {
 	// 2. User config directory ~/.config/secure-backup/plugins (or equivalent per OS)
 	if configDir, err := os.UserConfigDir(); err == nil {
 		searchPaths = append(searchPaths, filepath.Join(configDir, "secure-backup", "plugins", binaryName))
+	}
+	// 2b. Standard Unix fallback ~/.config/secure-backup/plugins (useful on macOS)
+	if home, err := os.UserHomeDir(); err == nil {
+		searchPaths = append(searchPaths, filepath.Join(home, ".config", "secure-backup", "plugins", binaryName))
 	}
 
 	// 3. System-wide directory /usr/local/lib/secure-backup/plugins
@@ -213,24 +224,52 @@ func findPlugin(prefix, name string) (string, error) {
 		}
 
 		// Verify Plugin Signature
-		pubKey, err := base64.StdEncoding.DecodeString(trustedPublicKeyB64)
-		if err != nil {
-			log.Fatalf("Invalid embedded public key: %v", err)
-		}
-
 		sigPath := p + ".sig"
 		sig, err := os.ReadFile(sigPath)
 		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Printf("WARNING: Found signature file %s but could not read it: %v", sigPath, err)
+			}
 			continue // signature missing
 		}
 
 		pluginBytes, err := os.ReadFile(p)
 		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Printf("WARNING: Found plugin binary %s but could not read it: %v", p, err)
+			}
 			continue
 		}
 
-		if !ed25519.Verify(pubKey, pluginBytes, sig) {
-			log.Printf("WARNING: Plugin %s has an invalid signature. Skipping.", p)
+		verified := false
+		for _, key := range trustedKeys {
+			if ed25519.Verify(key, pluginBytes, sig) {
+				verified = true
+				break
+			}
+		}
+
+		if !verified {
+			pubPath := p + ".pub"
+			if pubKeyData, err := os.ReadFile(pubPath); err == nil {
+				cleanedPubKey := strings.TrimSpace(string(pubKeyData))
+				decodedPubKey, err := base64.StdEncoding.DecodeString(cleanedPubKey)
+				if err == nil && len(decodedPubKey) == ed25519.PublicKeySize {
+					pubKey := ed25519.PublicKey(decodedPubKey)
+					if ed25519.Verify(pubKey, pluginBytes, sig) {
+						ok, err := verifyWithKeyserver(pubKey)
+						if err == nil && ok {
+							verified = true
+						} else {
+							log.Printf("WARNING: Plugin %s verified by key %s, but key is NOT trusted by keyserver: %v", p, cleanedPubKey, err)
+						}
+					}
+				}
+			}
+		}
+
+		if !verified {
+			log.Printf("WARNING: Plugin %s has an invalid signature or no trusted signing key. Skipping.", p)
 			continue
 		}
 
@@ -238,6 +277,334 @@ func findPlugin(prefix, name string) (string, error) {
 	}
 
 	return "", fmt.Errorf("plugin '%s' not found (or was rejected due to unsafe permissions/ownership) in any standard locations", binaryName)
+}
+
+func loadTrustedKeys() []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+
+	// Load from local keyring directories
+	keys = append(keys, loadLocalKeyring()...)
+
+	// Load from SSH agent
+	keys = append(keys, loadSSHAgentKeys()...)
+
+	// Load from SSH files (~/.ssh/)
+	keys = append(keys, loadSSHKeysFromFiles()...)
+
+	// Load from GnuPG
+	keys = append(keys, loadGPGKeys()...)
+
+	// Load from macOS Keychain
+	keys = append(keys, loadKeychainKeys()...)
+
+	// Load from Linux Secret Service
+	keys = append(keys, loadLinuxKeyringKeys()...)
+
+	// Deduplicate keys
+	seen := make(map[string]bool)
+	var deduped []ed25519.PublicKey
+	for _, k := range keys {
+		kStr := string(k)
+		if !seen[kStr] {
+			seen[kStr] = true
+			deduped = append(deduped, k)
+		}
+	}
+
+	return deduped
+}
+
+func loadLocalKeyring() []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+
+	// 1. Env override
+	if envPath := os.Getenv("SECURE_BACKUP_KEYRING"); envPath != "" {
+		keys = append(keys, loadKeysFromDir(envPath)...)
+	}
+
+	// 2. User config dir ~/.config/secure-backup/keys
+	if configDir, err := os.UserConfigDir(); err == nil {
+		keys = append(keys, loadKeysFromDir(filepath.Join(configDir, "secure-backup", "keys"))...)
+	}
+	// 2b. Standard Unix fallback ~/.config/secure-backup/keys (useful on macOS)
+	if home, err := os.UserHomeDir(); err == nil {
+		keys = append(keys, loadKeysFromDir(filepath.Join(home, ".config", "secure-backup", "keys"))...)
+	}
+
+	// 3. System-wide /etc/secure-backup/keys
+	keys = append(keys, loadKeysFromDir("/etc/secure-backup/keys")...)
+
+	return keys
+}
+
+func loadKeysFromDir(dirPath string) []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		return keys
+	}
+
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		// Skip hidden files
+		if strings.HasPrefix(f.Name(), ".") {
+			continue
+		}
+
+		filePath := filepath.Join(dirPath, f.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+
+		// Try decoding as base64
+		cleaned := strings.TrimSpace(string(data))
+		decoded, err := base64.StdEncoding.DecodeString(cleaned)
+		if err == nil && len(decoded) == ed25519.PublicKeySize {
+			keys = append(keys, decoded)
+			continue
+		}
+
+		// Try as raw binary 32-byte key
+		if len(data) == ed25519.PublicKeySize {
+			keys = append(keys, ed25519.PublicKey(data))
+		}
+	}
+	return keys
+}
+
+func loadSSHAgentKeys() []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+	socket := os.Getenv("SSH_AUTH_SOCK")
+	if socket == "" {
+		return keys
+	}
+	conn, err := net.Dial("unix", socket)
+	if err != nil {
+		return keys
+	}
+	defer conn.Close()
+
+	client := agent.NewClient(conn)
+	signers, err := client.List()
+	if err != nil {
+		return keys
+	}
+
+	for _, key := range signers {
+		if key.Format == "ssh-ed25519" {
+			sshPubKey, err := ssh.ParsePublicKey(key.Blob)
+			if err == nil {
+				if cryptoKey, ok := sshPubKey.(interface{ CryptoPublicKey() crypto.PublicKey }); ok {
+					if edKey, ok := cryptoKey.CryptoPublicKey().(ed25519.PublicKey); ok {
+						keys = append(keys, edKey)
+					}
+				}
+			}
+		}
+	}
+	return keys
+}
+
+func loadSSHKeysFromFiles() []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return keys
+	}
+	sshDir := filepath.Join(home, ".ssh")
+
+	// Read authorized_keys
+	authKeysPath := filepath.Join(sshDir, "authorized_keys")
+	if data, err := os.ReadFile(authKeysPath); err == nil {
+		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		for scanner.Scan() {
+			line := scanner.Text()
+			outKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+			if err == nil {
+				if outKey.Type() == "ssh-ed25519" {
+					if cryptoKey, ok := outKey.(interface{ CryptoPublicKey() crypto.PublicKey }); ok {
+						if edKey, ok := cryptoKey.CryptoPublicKey().(ed25519.PublicKey); ok {
+							keys = append(keys, edKey)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Read ~/.ssh/*.pub files
+	if files, err := os.ReadDir(sshDir); err == nil {
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".pub") {
+				pubPath := filepath.Join(sshDir, f.Name())
+				if data, err := os.ReadFile(pubPath); err == nil {
+					outKey, _, _, _, err := ssh.ParseAuthorizedKey(data)
+					if err == nil {
+						if outKey.Type() == "ssh-ed25519" {
+							if cryptoKey, ok := outKey.(interface{ CryptoPublicKey() crypto.PublicKey }); ok {
+								if edKey, ok := cryptoKey.CryptoPublicKey().(ed25519.PublicKey); ok {
+									keys = append(keys, edKey)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return keys
+}
+
+func loadGPGKeys() []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+	if _, err := exec.LookPath("gpg"); err != nil {
+		return keys
+	}
+
+	cmd := exec.Command("gpg", "--list-public-keys", "--with-colons")
+	output, err := cmd.Output()
+	if err != nil {
+		return keys
+	}
+
+	var fingerprints []string
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, ":")
+		if len(parts) >= 5 && (parts[0] == "pub" || parts[0] == "sub") {
+			fingerprint := parts[4]
+			if fingerprint != "" {
+				fingerprints = append(fingerprints, fingerprint)
+			}
+		}
+	}
+
+	for _, fp := range fingerprints {
+		cmdExport := exec.Command("gpg", "--export-ssh-key", fp)
+		sshKeyData, err := cmdExport.Output()
+		if err == nil {
+			outKey, _, _, _, err := ssh.ParseAuthorizedKey(sshKeyData)
+			if err == nil && outKey.Type() == "ssh-ed25519" {
+				if cryptoKey, ok := outKey.(interface{ CryptoPublicKey() crypto.PublicKey }); ok {
+					if edKey, ok := cryptoKey.CryptoPublicKey().(ed25519.PublicKey); ok {
+						keys = append(keys, edKey)
+					}
+				}
+			}
+		}
+	}
+
+	return keys
+}
+
+func loadKeychainKeys() []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+	if runtime.GOOS != "darwin" {
+		return keys
+	}
+	if _, err := exec.LookPath("security"); err != nil {
+		return keys
+	}
+
+	cmd := exec.Command("security", "find-generic-password", "-s", "secure-backup-plugin-key", "-g")
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		return keys
+	}
+
+	lines := strings.Split(stderr.String(), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "password: ") {
+			passVal := strings.TrimPrefix(line, "password: ")
+			if strings.HasPrefix(passVal, "\"") && strings.HasSuffix(passVal, "\"") {
+				passVal = passVal[1 : len(passVal)-1]
+			}
+			decoded, err := base64.StdEncoding.DecodeString(passVal)
+			if err == nil && len(decoded) == ed25519.PublicKeySize {
+				keys = append(keys, decoded)
+			}
+		}
+	}
+
+	return keys
+}
+
+func loadLinuxKeyringKeys() []ed25519.PublicKey {
+	var keys []ed25519.PublicKey
+	if runtime.GOOS != "linux" {
+		return keys
+	}
+	if _, err := exec.LookPath("secret-tool"); err != nil {
+		return keys
+	}
+
+	cmd := exec.Command("secret-tool", "lookup", "service", "secure-backup-plugin-key")
+	output, err := cmd.Output()
+	if err == nil {
+		val := strings.TrimSpace(string(output))
+		decoded, err := base64.StdEncoding.DecodeString(val)
+		if err == nil && len(decoded) == ed25519.PublicKeySize {
+			keys = append(keys, decoded)
+		}
+	}
+	return keys
+}
+
+func verifyWithKeyserver(pubKey ed25519.PublicKey) (bool, error) {
+	fingerprint := fmt.Sprintf("%x", sha256.Sum256(pubKey))
+
+	keyserverURL := os.Getenv("SECURE_BACKUP_KEYSERVER")
+	if keyserverURL == "" {
+		keyserverURL = "https://keys.secure-backup.org"
+	}
+	keyserverURL = strings.TrimSuffix(keyserverURL, "/")
+
+	url := fmt.Sprintf("%s/%s", keyserverURL, fingerprint)
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return false, fmt.Errorf("failed to query keyserver: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("keyserver returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read keyserver response: %w", err)
+	}
+
+	cleaned := strings.TrimSpace(string(body))
+	decoded, err := base64.StdEncoding.DecodeString(cleaned)
+	if err != nil {
+		return false, fmt.Errorf("keyserver returned invalid base64 public key: %w", err)
+	}
+
+	if len(decoded) != ed25519.PublicKeySize {
+		return false, fmt.Errorf("keyserver returned public key of invalid size")
+	}
+
+	for i := range pubKey {
+		if pubKey[i] != decoded[i] {
+			return false, fmt.Errorf("keyserver public key mismatch")
+		}
+	}
+
+	return true, nil
 }
 
 func initPlugin() (plugins.Provider, func()) {

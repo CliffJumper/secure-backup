@@ -182,10 +182,13 @@ Encrypted chunks have a `.enc` extension, and typically follow the naming conven
 All data is encrypted with **AES-256-GCM**. The 256-bit key is derived from your password using **Argon2id** (default) or **scrypt**. These are memory-hard functions designed to resist GPU/ASIC-based cracking attempts.
 
 ### 2. Plugin Signing
-To prevent malicious code injection via hijacked plugin binaries, `secure-backup` requires all plugins to be cryptographically signed using **Ed25519**.
-- **Embedded Public Key**: A trusted public key is embedded in the `secure-backup` binary at compile time.
-- **Signature Verification**: Every time a plugin is loaded, the tool verifies that a corresponding `<plugin>.sig` file exists and contains a valid signature for the binary.
-- **Rejection**: If a signature is missing or invalid, the plugin is rejected, and the operation fails.
+To prevent malicious code injection via hijacked plugin binaries, `secure-backup` requires all plugins to be cryptographically signed using **Ed25519** and validated.
+- **Dynamic Keyrings**: Instead of a single embedded key, trusted public keys are loaded dynamically from multiple keyring sources (e.g., local keyring directories, SSH Agent, GPG, macOS Keychain, Linux Secret Service).
+- **Signature Verification**: Every time a plugin is loaded, the tool verifies that a corresponding `<plugin>.sig` file exists and contains a valid signature verified by one of the trusted keyring keys.
+- **Keyserver Validation Fallback**: If the key is not in a local keyring, the tool can verify the signature using the plugin's companion `<plugin>.pub` public key, and check if that key fingerprint is registered on a trusted Keyserver.
+- **Rejection**: If path safety check fails, or the signature is missing or invalid, the plugin is rejected, and loading fails.
+
+For details, see the [Plugin Signing and Validation Guide](doc/plugin-signing-and-validation.md).
 
 ### 3. Path & Symlink Protection
 The restore process includes strict validation to prevent directory traversal attacks and symlink-based file overwrites.
@@ -195,14 +198,15 @@ The restore process includes strict validation to prevent directory traversal at
 Requires [Go](https://go.dev/) 1.25+ and `make`.
 
 ### Initial Setup (Security Keys)
-Before building for the first time, you must generate your own security keypair for plugin signing:
+Before building for the first time, you must generate your own security keypair for plugin signing and place it in your trusted key directory:
 
 ```bash
 # Generate .security-key (private) and .public-key (public)
 make gen-security-keys
 
-# IMPORTANT: Update the 'trustedPublicKeyB64' constant in main.go 
-# with the output from .public-key before compiling!
+# Install the public key into the user keyring directory
+mkdir -p ~/.config/secure-backup/keys/
+cp .public-key ~/.config/secure-backup/keys/developer-key.pub
 ```
 
 ### Compiling

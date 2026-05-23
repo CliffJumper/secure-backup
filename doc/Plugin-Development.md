@@ -136,18 +136,18 @@ secure-backup backup ... --plugin s3 --plugin-opt enable_accelerator=true --plug
 
 ## 5. Security & Signing
 
-For security reasons, `secure-backup` will **refuse** to execute any plugin that is not cryptographically signed by a trusted key.
+For security reasons, `secure-backup` enforces path safety, file permissions, and cryptographic signatures, refusing to execute any plugin that is not verified by a trusted key.
 
-### How it works:
-1. When `secure-backup` searches for a plugin (e.g., `storage-plugin-s3`), it also looks for a companion file named `storage-plugin-s3.sig`.
-2. This `.sig` file must contain an **Ed25519 signature** of the binary, generated using the private key corresponding to the public key embedded in the `secure-backup` core binary.
+For a full breakdown of path validation, permissions enforcement, and dynamic keyring management (loading keys from GPG, SSH Agent, macOS Keychain, Linux Secret Service, etc.), see the [Plugin Signing and Validation Guide](plugin-signing-and-validation.md).
 
-### Signing your plugin:
-If you are developing a new plugin, you must sign the binary before `secure-backup` will accept it:
+### Quick Summary
 
-```bash
-# Using the built-in security tool and your private key
-go run scripts/security-tool/main.go -sign storage-plugin-my-custom -key <YOUR_PRIVATE_KEY_B64>
-```
+1. When `secure-backup` searches for a plugin (e.g., `storage-plugin-s3`), it also checks for a companion signature file named `storage-plugin-s3.sig` in the same directory.
+2. The signature is verified against the public keys in your trusted keyrings (such as `~/.config/secure-backup/keys/` or SSH keys).
+3. If you compile a plugin manually, you must sign it before running the core application:
+   ```bash
+   go run scripts/security-tool/main.go -sign storage-plugin-my-custom -key <YOUR_PRIVATE_KEY_B64>
+   ```
 
-If you are using the provided `Makefile`, all plugins in the `plugins/` directory are automatically signed during the `make build` process if a `.security-key` file is present in the project root.
+If you compile using the provided root `Makefile`, all plugins in the `plugins/` directory are automatically signed during the `make build` process if a `.security-key` private key file is present in the project root.
+

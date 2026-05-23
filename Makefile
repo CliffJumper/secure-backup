@@ -62,7 +62,14 @@ install-plugins:
 	@echo "Installing plugins to $(PLUGINDIR)..."
 	@mkdir -p "$(PLUGINDIR)"
 	@cp build/plugins/* "$(PLUGINDIR)/"
-	@chmod +x "$(PLUGINDIR)"/*
+	@for f in "$(PLUGINDIR)"/*; do \
+		if [ -f "$$f" ]; then \
+			case "$$f" in \
+				*.sig|*.pub) chmod 0644 "$$f" ;; \
+				*) chmod 0755 "$$f" ;; \
+			esac; \
+		fi; \
+	done
 	@echo "Plugins installed successfully."
 
 install: install-core install-plugins
@@ -93,7 +100,9 @@ gen-security-keys:
 	@grep "Public Key" .security-keys.txt | cut -d' ' -f4 > .public-key
 	@rm .security-keys.txt
 	@echo "Keys generated: .security-key (PRIVATE) and .public-key (PUBLIC)"
-	@echo "IMPORTANT: Update the 'trustedPublicKeyB64' in main.go with the content of .public-key"
+	@mkdir -p "$(HOME)/.config/secure-backup/keys"
+	@cp .public-key "$(HOME)/.config/secure-backup/keys/developer-key.pub"
+	@echo "Public key automatically copied to trusted keyring: ~/.config/secure-backup/keys/developer-key.pub"
 
 sign-plugins:
 	@if [ ! -f ".security-key" ]; then \
@@ -102,7 +111,7 @@ sign-plugins:
 		echo " -> Signing plugins..."; \
 		for plugin in build/plugins/*; do \
 			if [ -f "$$plugin" ] && [ "$${plugin##*.}" != "sig" ]; then \
-				go run scripts/security-tool/main.go -sign "$$plugin" -key "$$(cat .security-key)"; \
+				go run scripts/security-tool/main.go -sign "$$plugin" -key .security-key; \
 			fi \
 		done \
 	fi

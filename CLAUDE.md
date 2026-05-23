@@ -10,7 +10,7 @@ make clean                # Remove build/ directory
 go test ./...             # Run all tests
 go test ./pkg/encrypt/    # Run tests for a single package
 sudo make install         # Install to /usr/local (PREFIX=/custom/path supported)
-make gen-security-keys    # Generate new Ed25519 keypair (then update trustedPublicKeyB64 in main.go)
+make gen-security-keys    # Generate new Ed25519 keypair (then install .public-key to ~/.config/secure-backup/keys/)
 ```
 
 Protobuf regeneration (if .proto files change):
@@ -36,7 +36,7 @@ Plugins are **separate Go modules** in `plugins/` with their own `go.mod`. They 
 - **Storage plugins** (`pkg/plugins/plugins.go`): `Init`, `UploadFile`, `DownloadFile`, `ListFiles`, `DeleteFile`
 - **Credential plugins** (`pkg/credentials/plugins.go`): `GetCredentials`
 
-Plugins are discovered from multiple paths (explicit `--plugin-dir`, `build/plugins/`, `~/.config/secure-backup/plugins/`, `/usr/local/lib/secure-backup/plugins/`). Every plugin binary must have a matching `.sig` file containing a valid Ed25519 signature verified against the public key embedded in `main.go` (`trustedPublicKeyB64`).
+Plugins are discovered from multiple paths (explicit `--plugin-dir`, `build/plugins/`, `~/.config/secure-backup/plugins/`, `/usr/local/lib/secure-backup/plugins/`). Every plugin binary must have a matching `.sig` file containing a valid Ed25519 signature verified against a trusted public key in the user's/system's keyring (or verified via keyserver fallback).
 
 ### Encryption format
 Binary header: `SBK1` magic → KDF ID → salt → KDF params → 12-byte nonce → AES-256-GCM ciphertext. KDF parameters are tunable via `SECURE_BACKUP_ARGON2_*` / `SECURE_BACKUP_SCRYPT_*` environment variables.
