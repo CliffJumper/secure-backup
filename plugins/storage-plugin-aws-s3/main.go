@@ -164,6 +164,10 @@ func (s *S3Provider) DeleteFile(remotePath string) error {
 	return nil
 }
 
+func (s *S3Provider) GetUpdatedConfig() (map[string]string, error) {
+	return nil, nil
+}
+
 func main() {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: plugins.HandshakeConfig,

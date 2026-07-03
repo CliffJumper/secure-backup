@@ -10,7 +10,13 @@ service Provider {
   rpc DownloadFile(DownloadRequest) returns (Empty);
   rpc ListFiles(ListRequest) returns (ListResponse);
   rpc DeleteFile(DeleteRequest) returns (Empty);
+  rpc GetUpdatedConfig(Empty) returns (ConfigResponse);
 }
+
+message ConfigResponse {
+  map<string, string> config = 1;
+}
+
 
 message Empty {}
 

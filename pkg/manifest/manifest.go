@@ -42,7 +42,7 @@ func DownloadAndDecrypt(provider plugins.Provider, password []byte) (*Manifest, 
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempPath := tempFile.Name()
-	tempFile.Close()
+	_ = tempFile.Close()
 	defer os.Remove(tempPath)
 
 	err = provider.DownloadFile(RemoteManifestName, tempPath)
@@ -103,10 +103,12 @@ func EncryptAndUpload(provider plugins.Provider, password []byte, m *Manifest) e
 	tempPath := tempFile.Name()
 
 	if err := os.WriteFile(tempPath, ciphertext, 0600); err != nil {
-		tempFile.Close()
+		_ = tempFile.Close()
 		return fmt.Errorf("failed to write encrypted manifest to temp: %w", err)
 	}
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
 	defer os.Remove(tempPath)
 
 	err = provider.UploadFile(tempPath, filepath.ToSlash(RemoteManifestName))

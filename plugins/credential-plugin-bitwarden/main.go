@@ -9,6 +9,8 @@ import (
 
 	"github.com/CliffJumper/secure-backup/pkg/credentials"
 	"github.com/hashicorp/go-plugin"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type BWProvider struct{}
@@ -20,8 +22,12 @@ func (b *BWProvider) GetCredentials(target string) (map[string]string, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if strings.Contains(strings.ToLower(stderr.String()), "not found") || strings.Contains(strings.ToLower(stderr.String()), "could not find") {
+			return nil, status.Error(codes.NotFound, "bitwarden item not found")
+		}
 		return nil, fmt.Errorf("failed to retrieve bitwarden item '%s': %v\nError output: %s\n(Did you forget to 'export BW_SESSION=...' or unlock your vault?)", target, err, stderr.String())
 	}
+
 
 	out := stdout.Bytes()
 	if len(bytes.TrimSpace(out)) == 0 {
@@ -70,6 +76,12 @@ func (b *BWProvider) GetCredentials(target string) (map[string]string, error) {
 	}
 
 	return result, nil
+}
+
+func (b *BWProvider) SetCredentials(target string, creds map[string]string) error {
+	// Bitwarden CLI does not support a straightforward, safe non-interactive way to update/edit fields
+	// without full item JSON replacement. To avoid risking vault corruption, we return an error.
+	return fmt.Errorf("SetCredentials is not supported by the Bitwarden plugin. Please update target item '%s' in Bitwarden manually", target)
 }
 
 func main() {

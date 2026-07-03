@@ -1,17 +1,17 @@
 # secure-backup
 
-A command-line tool that securely backs up files and directories using [Backblaze B2](https://www.backblaze.com/cloud-storage), local storage, or other, third-party plugins. Files are archived into chunked `tar.bz2` blocks and protected with AES-256-GCM encryption.
+A command-line tool that securely backs up files and directories using [Backblaze B2](https://www.backblaze.com/cloud-storage), local storage, Google Drive, or other, third-party plugins. Files are archived into chunked `tar.bz2` blocks and protected with AES-256-GCM encryption.
 
 ## Features
 
-- **AES-256-GCM encryption** — storage chunks are encrypted before upload using a password-derived key (PBKDF2, 100,000 iterations, SHA-256)
-- **Chunked tar.bz2 archiving** — reduce storage overhead and API costs by bundling source files into compressed `.tar.bz2` chunks before encryption
-- **Backblaze B2 storage** — files are uploaded to any B2 bucket you specify
-- **Filelist support** — define a list of files and directories to back up or delete in a plain-text file
-- **Remote prefix namespacing** — organise backups within a bucket using a prefix
-- **Full or partial restore** — restore individual files or the entire bucket
-- **Secure password input** — prompts interactively with no terminal echo if no password env var is set
-- **Environment variable credentials** — keep secrets out of shell history
+- **AES-256-GCM encryption**: storage chunks are encrypted before upload using a password-derived key (PBKDF2, 100,000 iterations, SHA-256)
+- **Chunked tar.bz2 archiving**: reduce storage overhead and API costs by bundling source files into compressed `.tar.bz2` chunks before encryption
+- **Multiple Storage Backends**: built-in support for Backblaze B2, Google Drive, AWS S3, and local directories via pluggable gRPC plugins
+- **Filelist support**: define a list of files and directories to back up or delete in a plain-text file
+- **Remote prefix namespacing**: organise backups within a bucket using a prefix
+- **Full or partial restore**: restore individual files or the entire bucket
+- **Secure password input**: prompts interactively with no terminal echo if no password env var is set
+
 
 ## Building and Installing
 
@@ -45,10 +45,15 @@ export BACKUP_PASSWORD="your-encryption-password"
 
 # Back up a file and a directory using the Backblaze B2 plugin
 ./secure-backup backup file.txt /home/user/documents \
+  --plugin backblaze \
   --plugin-opt account_id="your-account-id" \
   --plugin-opt application_key="your-application-key" \
   --plugin-opt bucket="your-bucket-name"
 ```
+
+**OR**
+Leave out the password env var and it will prompt you for it when running the command 
+
 
 **OR** 
 Setup your credentials via [Credential Plugins](doc/credential-plugins.md) to avoid passing keys via CLI flags:
@@ -56,6 +61,7 @@ Setup your credentials via [Credential Plugins](doc/credential-plugins.md) to av
 ```bash
 # Restore a specific file using the credential plugin instead
 ./secure-backup restore home/user/documents/report.pdf.enc \
+  --plugin backblaze \
   --cred-plugin bitwarden --cred-item "Backblaze Backup Server"
 ```
 
@@ -135,7 +141,7 @@ These flags apply to both `backup` and `restore`.
 
 | Flag | Short | Environment Variable | Description |
 |---|---|---|---|
-| `--plugin` | | | Storage plugin to use (default: `backblaze`) |
+| `--plugin` | | | Storage plugin to use (if not specified, prompts interactively) |
 | `--plugin-opt` | `-O` | | Plugin specific configurations (e.g. `account_id=...,bucket=...`) |
 | `--password` | `-p` | `BACKUP_PASSWORD` | Encryption password |
 | `--cred-plugin` | | | Credential plugin to use (e.g., bitwarden, keychain) |

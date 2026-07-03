@@ -22,7 +22,9 @@ type Provider interface {
 	DownloadFile(remotePath, localPath string) error
 	ListFiles(prefix string) ([]string, error)
 	DeleteFile(remotePath string) error
+	GetUpdatedConfig() (map[string]string, error)
 }
+
 
 // PluginMap is the map of plugins we can dispense.
 var PluginMap = map[string]plugin.Plugin{

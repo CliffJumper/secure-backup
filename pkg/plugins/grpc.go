@@ -84,6 +84,16 @@ func (m *GRPCClient) DeleteFile(remotePath string) error {
 	return err
 }
 
+func (m *GRPCClient) GetUpdatedConfig() (map[string]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
+	defer cancel()
+	resp, err := m.client.GetUpdatedConfig(ctx, &proto.Empty{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Config, nil
+}
+
 // GRPCServer is the gRPC server that GRPCClient talks to.
 type GRPCServer struct {
 	proto.UnimplementedProviderServer
@@ -117,3 +127,12 @@ func (m *GRPCServer) DeleteFile(ctx context.Context, req *proto.DeleteRequest) (
 	err := m.Impl.DeleteFile(req.RemotePath)
 	return &proto.Empty{}, err
 }
+
+func (m *GRPCServer) GetUpdatedConfig(ctx context.Context, req *proto.Empty) (*proto.ConfigResponse, error) {
+	config, err := m.Impl.GetUpdatedConfig()
+	if err != nil {
+		return nil, err
+	}
+	return &proto.ConfigResponse{Config: config}, nil
+}
+

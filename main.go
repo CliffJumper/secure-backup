@@ -30,6 +30,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -59,7 +60,7 @@ func main() {
 		Short: "Backup tool with encryption and plugin support",
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&pluginFlag, "plugin", "", "backblaze", "Plugin to use for backup destination (e.g., backblaze, local)")
+	rootCmd.PersistentFlags().StringVarP(&pluginFlag, "plugin", "", "", "Plugin to use for backup destination (e.g., backblaze, local, google-drive)")
 	rootCmd.PersistentFlags().StringVarP(&credPlugin, "cred-plugin", "", "", "Plugin to use for credentials (e.g., bitwarden, keychain)")
 	rootCmd.PersistentFlags().StringVarP(&credItem, "cred-item", "", "", "Target item name or ID to pass to the credential plugin")
 	rootCmd.PersistentFlags().StringToStringVarP(&pluginOpts, "plugin-opt", "O", nil, "Plugin specific options (key=value)")
@@ -607,8 +608,54 @@ func verifyWithKeyserver(pubKey ed25519.PublicKey) (bool, error) {
 	return true, nil
 }
 
+
+func promptForPlugin() string {
+	var out io.Writer = os.Stderr
+	var in io.Reader = os.Stdin
+	tty, ttyErr := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if ttyErr == nil {
+		defer tty.Close()
+		out = tty
+		in = tty
+	} else if !term.IsTerminal(int(os.Stdin.Fd())) {
+		log.Fatal("Error: No storage plugin specified. Provide --plugin flag or run in an interactive terminal.")
+	}
+
+	for {
+		fmt.Fprintln(out, "No storage plugin was specified. Please select a storage plugin:")
+		fmt.Fprintln(out, "  1) backblaze    (Backblaze B2 Object Storage)")
+		fmt.Fprintln(out, "  2) local        (Local File System)")
+		fmt.Fprintln(out, "  3) aws-s3       (Amazon S3 Storage)")
+		fmt.Fprintln(out, "  4) google-drive (Google Drive Cloud Storage)")
+		fmt.Fprint(out, "Select option (1-4 or name): ")
+
+		var input string
+		if _, err := fmt.Fscanln(in, &input); err != nil {
+			log.Fatalf("Error reading input: %v", err)
+		}
+		input = strings.TrimSpace(strings.ToLower(input))
+
+		switch input {
+		case "1", "backblaze":
+			return "backblaze"
+		case "2", "local":
+			return "local"
+		case "3", "aws-s3":
+			return "aws-s3"
+		case "4", "google-drive":
+			return "google-drive"
+		default:
+			fmt.Fprintln(out, "Invalid selection. Please try again.")
+		}
+	}
+}
+
+
 func initPlugin() (plugins.Provider, func()) {
 	var credCleanup func()
+	var credProvider credentials.Provider
+	var originalCreds map[string]string
+
 	if credPlugin != "" {
 		if credItem == "" {
 			log.Fatal("Error: --cred-item must be specified when using --cred-plugin")
@@ -642,13 +689,21 @@ func initPlugin() (plugins.Provider, func()) {
 			log.Fatalf("Error dispensing credential plugin: %v", err)
 		}
 
-		provider := raw.(credentials.Provider)
+		credProvider = raw.(credentials.Provider)
 
 		fmt.Printf("Fetching credentials via %s (target: %s)...\n", credPlugin, credItem)
-		creds, err := provider.GetCredentials(credItem)
+		creds, err := credProvider.GetCredentials(credItem)
 		if err != nil {
-			log.Fatalf("Failed to retrieve credentials via plugin %s: %v", credPlugin, err)
+			if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+				fmt.Printf("Credential item '%s' not found in %s keyring. It will be created automatically upon successful login.\n", credItem, credPlugin)
+				creds = make(map[string]string)
+			} else {
+				log.Fatalf("Failed to retrieve credentials via plugin %s: %v", credPlugin, err)
+			}
 		}
+
+
+		originalCreds = creds
 
 		// Map all dynamically resolved credentials directly to plugin options
 		for k, v := range creds {
@@ -668,7 +723,32 @@ func initPlugin() (plugins.Provider, func()) {
 
 	pluginName := pluginFlag
 	if pluginName == "" {
-		pluginName = "backblaze"
+		pluginName = promptForPlugin()
+	}
+
+	// For Google Drive: if a token exists in pluginOpts, write it to the token file (if using file-based fallback).
+	var tokenPath string
+	if pluginName == "google-drive" {
+		if pluginOpts != nil {
+			tokenPath = pluginOpts["token_path"]
+		}
+		// If credentials plugin is not active, we fall back to standard file-based storage
+		if tokenPath == "" && credProvider == nil {
+			if home, err := os.UserHomeDir(); err == nil {
+				tokenPath = filepath.Join(home, ".config", "secure-backup", "google-drive-token.json")
+			}
+		}
+		if tokenPath != "" {
+			if pluginOpts == nil {
+				pluginOpts = make(map[string]string)
+			}
+			pluginOpts["token_path"] = tokenPath
+
+			if tokStr, ok := pluginOpts["google_drive_token"]; ok && tokStr != "" {
+				_ = os.MkdirAll(filepath.Dir(tokenPath), 0700)
+				_ = os.WriteFile(tokenPath, []byte(tokStr), 0600)
+			}
+		}
 	}
 
 	pluginPath, err := findPlugin("storage-plugin", pluginName)
@@ -710,12 +790,44 @@ func initPlugin() (plugins.Provider, func()) {
 	}
 
 	return provider, func() {
+		// Clean up Google Drive credentials and save the token back to the credentials plugin
+		if pluginName == "google-drive" {
+			if updatedConfig, err := provider.GetUpdatedConfig(); err == nil && updatedConfig != nil {
+				if credProvider != nil && originalCreds != nil {
+					// Check if anything has changed compared to what we loaded initially
+					changed := false
+					for k, v := range updatedConfig {
+						if originalCreds[k] != v {
+							changed = true
+							break
+						}
+					}
+
+					if changed {
+						fmt.Printf("Syncing updated Google Drive credentials back to credentials plugin %s (target: %s)...\n", credPlugin, credItem)
+						updatedCreds := make(map[string]string)
+						for k, v := range originalCreds {
+							updatedCreds[k] = v
+						}
+						for k, v := range updatedConfig {
+							updatedCreds[k] = v
+						}
+
+						if err := credProvider.SetCredentials(credItem, updatedCreds); err != nil {
+							log.Printf("WARNING: Failed to save updated credentials to credentials plugin: %v", err)
+						}
+					}
+				}
+			}
+		}
+
 		if credCleanup != nil {
 			credCleanup()
 		}
 		client.Kill()
 	}
 }
+
 
 func runBackup(cmd *cobra.Command, args []string) {
 	ensureAuth()
@@ -960,12 +1072,12 @@ func runRestore(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to create temp chunk file: %v", err)
 		}
 		tempPath := localEncFile.Name()
-		localEncFile.Close()
+		_ = localEncFile.Close()
 
 		fmt.Printf("Downloading chunk %s...\n", chunkID)
 		if err := provider.DownloadFile(remotePath, tempPath); err != nil {
 			log.Printf("Failed to download chunk %s: %v", chunkID, err)
-			os.Remove(tempPath)
+			_ = os.Remove(tempPath)
 			continue
 		}
 
@@ -973,7 +1085,7 @@ func runRestore(cmd *cobra.Command, args []string) {
 		encryptedData, err := os.ReadFile(tempPath)
 		if err != nil {
 			log.Printf("Failed to read downloaded chunk %s: %v", chunkID, err)
-			os.Remove(tempPath)
+			_ = os.Remove(tempPath)
 			continue
 		}
 
@@ -981,7 +1093,7 @@ func runRestore(cmd *cobra.Command, args []string) {
 		encrypt.ZeroBytes(encryptedData)
 		if err != nil {
 			log.Printf("Failed to decrypt %s: %v", chunkID, err)
-			os.Remove(tempPath)
+			_ = os.Remove(tempPath)
 			continue
 		}
 
@@ -990,7 +1102,7 @@ func runRestore(cmd *cobra.Command, args []string) {
 		}
 
 		encrypt.ZeroBytes(chunkData)
-		os.Remove(tempPath)
+		_ = os.Remove(tempPath)
 	}
 
 	encrypt.ZeroBytes(password)
@@ -1051,7 +1163,7 @@ func runDelete(cmd *cobra.Command, args []string) {
 		fmt.Printf("This will logically delete %d file(s) from the manifest.\n", len(targets))
 		fmt.Print("Proceed? [y/N]: ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" {
 			fmt.Println("Delete cancelled.")
 			return
