@@ -158,6 +158,11 @@ func (l *LocalProvider) DeleteFile(remotePath string) error {
 	return nil
 }
 
+func (l *LocalProvider) GetUpdatedConfig() (map[string]string, error) {
+	return nil, nil
+}
+
+
 func main() {
 	localProvider := &LocalProvider{}
 

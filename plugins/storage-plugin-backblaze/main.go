@@ -73,7 +73,7 @@ func (b *BackblazeProvider) doUpload(ctx context.Context, localPath, remotePath 
 	obj := b.bucket.Object(remotePath)
 	w := obj.NewWriter(ctx)
 	if _, err := io.Copy(w, f); err != nil {
-		w.Close()
+		_ = w.Close()
 		return fmt.Errorf("failed to upload data: %w", err)
 	}
 	if err := w.Close(); err != nil {
@@ -147,6 +147,11 @@ func (b *BackblazeProvider) DeleteFile(remotePath string) error {
 	}
 	return nil
 }
+
+func (b *BackblazeProvider) GetUpdatedConfig() (map[string]string, error) {
+	return nil, nil
+}
+
 
 func main() {
 	b2Provider := &BackblazeProvider{}

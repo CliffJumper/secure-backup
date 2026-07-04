@@ -156,7 +156,7 @@ func (a *Archiver) rollChunk() error {
 
 	bzw, err := bzip2.NewWriter(f, &bzip2.WriterConfig{Level: bzip2.DefaultCompression})
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 
@@ -429,10 +429,12 @@ func Extract(chunkData []byte, filesToExtract map[string]bool, destDir string, s
 				return err
 			}
 			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
+				_ = f.Close()
 				return err
 			}
-			f.Close()
+			if err := f.Close(); err != nil {
+				return err
+			}
 			// Apply only permission bits; avoid restoring setuid/setgid/sticky from archives.
 			_ = os.Chmod(target, os.FileMode(header.Mode)&0o777)
 		case tar.TypeSymlink:

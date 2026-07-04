@@ -39,6 +39,16 @@ func (m *GRPCClient) GetCredentials(target string) (map[string]string, error) {
 	return resp.Credentials, nil
 }
 
+func (m *GRPCClient) SetCredentials(target string, creds map[string]string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), credTimeout)
+	defer cancel()
+	_, err := m.client.SetCredentials(ctx, &proto.SetRequest{
+		Target:      target,
+		Credentials: creds,
+	})
+	return err
+}
+
 type GRPCServer struct {
 	proto.UnimplementedCredentialProviderServer
 	Impl Provider
@@ -50,4 +60,12 @@ func (m *GRPCServer) GetCredentials(ctx context.Context, req *proto.GetRequest) 
 		return nil, err
 	}
 	return &proto.GetResponse{Credentials: creds}, nil
+}
+
+func (m *GRPCServer) SetCredentials(ctx context.Context, req *proto.SetRequest) (*proto.Empty, error) {
+	err := m.Impl.SetCredentials(req.Target, req.Credentials)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.Empty{}, nil
 }

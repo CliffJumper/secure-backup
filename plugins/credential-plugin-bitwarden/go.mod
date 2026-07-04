@@ -7,6 +7,7 @@ replace github.com/CliffJumper/secure-backup => ../../
 require (
 	github.com/CliffJumper/secure-backup v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/go-plugin v1.7.0
+	google.golang.org/grpc v1.79.3
 )
 
 require (
@@ -21,6 +22,5 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
-	google.golang.org/grpc v1.79.3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )

@@ -16,6 +16,7 @@ var HandshakeConfig = plugin.HandshakeConfig{
 
 type Provider interface {
 	GetCredentials(target string) (map[string]string, error)
+	SetCredentials(target string, creds map[string]string) error
 }
 
 var PluginMap = map[string]plugin.Plugin{
